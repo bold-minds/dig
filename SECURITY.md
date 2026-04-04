@@ -6,7 +6,7 @@ We actively support the following versions with security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
+| 0.x.x   | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
@@ -20,7 +20,7 @@ Please do not report security vulnerabilities through public GitHub issues, disc
 
 Send an email to **security@boldminds.tech** with the following information:
 
-- **Subject**: Security Vulnerability in bold-minds/[REPO_NAME]
+- **Subject**: Security Vulnerability in bold-minds/dig
 - **Description**: Detailed description of the vulnerability
 - **Steps to Reproduce**: Clear steps to reproduce the issue
 - **Impact**: Potential impact and severity assessment
@@ -43,39 +43,26 @@ Send an email to **security@boldminds.tech** with the following information:
 
 ## Security Considerations
 
-[Replace this section with security considerations specific to your project]
+`dig` is a read-only library with a very small attack surface:
 
-### [PROJECT_SPECIFIC_SECURITY_SECTION]
-
-[Add project-specific security considerations here. Examples:]
-
-- **Input Validation**: Always validate external inputs
-- **Authentication**: Implement proper authentication mechanisms
-- **Authorization**: Ensure proper access controls
-- **Data Protection**: Handle sensitive data appropriately
-- **Rate Limiting**: Implement rate limiting for public APIs
-- **Error Handling**: Avoid exposing sensitive information in error messages
-
-### Best Practices
-
-1. **[PRACTICE_1]**: [Description of security practice]
-2. **[PRACTICE_2]**: [Description of security practice]
-3. **[PRACTICE_3]**: [Description of security practice]
-4. **Input Validation**: Always validate inputs from external sources
-5. **Error Handling**: Properly handle all error returns from library functions
+- **No network I/O.** `dig` does not make network calls.
+- **No file I/O.** `dig` does not read or write files.
+- **No reflection.** `dig` uses concrete type switches only.
+- **No external dependencies.** `dig` is pure Go stdlib.
+- **Immutable.** `dig` never modifies input data.
+- **Nil-safe.** All functions handle `nil` inputs gracefully without panicking.
+- **No unchecked bounds.** Slice indexing validates non-negative and in-range indices before access.
 
 ### Known Limitations
 
-[List any known security limitations of your project]
-
-- **[LIMITATION_1]**: [Description]
-- **[LIMITATION_2]**: [Description]
+- `dig` does not parse or validate the structure of input data. It trusts that `any` trees have been produced by a safe source (`json.Unmarshal`, `yaml.Unmarshal`, hand-constructed maps, etc.). If you pass a maliciously-constructed data structure with deeply nested self-references, `dig` will traverse it without looping detection.
+- `dig` does not limit path depth or slice size. Callers passing untrusted path arrays of unbounded length should validate the path length before calling.
 
 ## Security Updates
 
 Security updates will be:
 
-- Released as patch versions (e.g., 1.0.1)
+- Released as patch versions (e.g., 0.1.1)
 - Documented in the CHANGELOG.md
 - Announced through GitHub releases
 - Tagged with security labels

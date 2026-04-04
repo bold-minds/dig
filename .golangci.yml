@@ -23,10 +23,7 @@ linters:
             - $all
           allow:
             - $gostd
-            - github.com/oklog/ulid
-            - github.com/stretchr/testify
-            - github.com/bold-minds/id
-            - github.com/bold-minds/oss
+            - github.com/bold-minds/dig
     errcheck:
       check-type-assertions: true
     funlen:

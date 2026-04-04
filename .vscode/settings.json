@@ -1,0 +1,22 @@
+{
+    "cSpell.words": [
+        "gosec",
+        "nolint",
+        "oklog",
+        "Println",
+        "Timestamper",
+        "ulids"
+    ],
+    "cSpell.allowCompoundWords": true,
+    "cSpell.ignoreRandomStrings": true,
+    "cSpell.ignorePaths": [
+        "./scripts/validate.sh",
+        "./**/*_test.go",
+        "plan.md",
+        "./.golangci.yml",
+        "./.github/",
+        ".vscode/"
+    ],
+    "go.lintTool": "golangci-lint",
+    "go.lintOnSave": "package"
+}

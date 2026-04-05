@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bold-minds/dig.svg)](https://pkg.go.dev/github.com/bold-minds/dig)
-[![Go Version](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/go-version.json)](https://golang.org/doc/go1.21)
+[![Go Version](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/go-version.json)](https://golang.org/doc/go1.26)
 [![Latest Release](https://img.shields.io/github/v/release/bold-minds/dig?logo=github&color=blueviolet)](https://github.com/bold-minds/dig/releases)
 [![Last Updated](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/last-updated.json)](https://github.com/bold-minds/dig/commits)
 [![golangci-lint](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/golangci-lint.json)](https://github.com/bold-minds/dig/actions/workflows/test.yaml)
@@ -36,7 +36,7 @@ addr, _ := dig.Dig[string](data, "user", "contact", "address")
 - 🎯 **One call, not four assertions** — walk any nested structure in a single line
 - 🛡️ **Nil-safe and zero-panic** — missing paths and type mismatches return `(zero, false)`, never panic
 - 🧭 **Mixed map and slice paths** — string keys navigate maps, `int` keys navigate slices, in the same path
-- ⚡ **No reflection** — concrete type switches, measured in nanoseconds, zero allocations
+- ⚡ **No reflection** — concrete type switches, measured in nanoseconds; the walk itself never allocates
 - 🪶 **Tiny** — four functions, one file, zero dependencies
 - 🔗 **Pairs with [`bold-minds/to`](https://github.com/bold-minds/to)** — if you need type coercion at the leaf, chain them
 
@@ -46,7 +46,7 @@ addr, _ := dig.Dig[string](data, "user", "contact", "address")
 go get github.com/bold-minds/dig
 ```
 
-Requires Go 1.21 or later.
+Requires Go 1.26 or later (see `go.mod`).
 
 ## 🚀 Quick Start
 
@@ -186,7 +186,7 @@ tags, _ := dig.Dig[[]any](data, "users", 2, "posts", 1, "tags")
 
 ## 🏎️ Performance
 
-Measured on Go 1.26 (Intel Ultra 9 275HX). **Zero allocations on every path**, including deep nested navigation.
+Measured on Go 1.26 (Intel Ultra 9 275HX). **Zero allocations inside the walk itself**, including deep nested navigation. The variadic `path ...any` is a slice header passed by the caller; in the benchmarks below (and in typical code that passes path literals), the compiler's escape analysis keeps that slice on the caller's stack, so the whole call costs zero heap allocations. If you construct a `[]any` from dynamic data and pass it with `path...`, the allocation happens at the construction site, not inside `dig`.
 
 ```
 BenchmarkDig_Shallow-24    201598330    5.77 ns/op    0 B/op    0 allocs/op
@@ -257,8 +257,18 @@ If a path element's type doesn't match the current node's expected key or index 
 
 **Strict type matching for path elements:**
 
-- Slice indices must be exactly `int` — `int64`, `uint`, and friends are rejected. If your index came from a JSON number (`float64`) or a typed loop variable, convert to `int` first.
-- `map[any]any` keys are restricted to a whitelist of hashable primitive types (see table above). This guarantees `dig` never panics even if a caller passes an unhashable value like a slice. Non-whitelisted key types (e.g., struct keys) fail cleanly.
+- Slice indices must be exactly `int` — `int64`, `uint`, `float64`, and friends are rejected. If your index came from a JSON number (which `encoding/json` decodes as `float64`), a `len()`-derived `uint`, or any other typed integer, convert to `int` first:
+
+  ```go
+  // JSON-decoded index: float64 → int
+  idxF, _ := dig.Dig[float64](data, "selected")
+  item, _ := dig.Dig[string](data, "items", int(idxF))
+
+  // Typed loop variable: int64 → int
+  var i int64 = 2
+  tag, _ := dig.Dig[string](data, "tags", int(i))
+  ```
+- `map[any]any` keys are restricted to a whitelist of hashable primitive types (see table above). This guarantees `dig` never panics even if a caller passes an unhashable value like a slice. Non-whitelisted key types — including hashable ones like `int8`, `int16`, `uint8`, `uint16`, `uintptr`, `complex64`, `complex128`, structs, arrays, and pointers — fail cleanly with `(zero, false)` **even when the map literally contains such a key**. If your decoder produces narrow integers (some YAML libraries decode small ints as `uint8`), convert the key to `int` or `int64` before calling `Dig`.
 
 **Supported container types:**
 

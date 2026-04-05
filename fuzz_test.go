@@ -71,7 +71,7 @@ func FuzzWalk(f *testing.F) {
 		case 0:
 			return strHint
 		case 1:
-			return int(int(b))
+			return int(b)
 		case 2:
 			return int32(b)
 		case 3:
@@ -86,7 +86,14 @@ func FuzzWalk(f *testing.F) {
 			return []int{int(b)} // unhashable — must not panic the map lookup
 		case 8:
 			return struct{ N int }{N: int(b)} // hashable but not whitelisted
+		case 9:
+			// nil as a path element — must not panic. For map[string]any
+			// the type assertion to string fails cleanly; for map[any]any
+			// nil is not in the whitelist and is also rejected.
+			return nil
 		default:
+			// Unreachable with % 10, but keeps the compiler happy and
+			// gives future edits a safe fallback.
 			return nil
 		}
 	}

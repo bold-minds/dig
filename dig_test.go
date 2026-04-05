@@ -189,6 +189,59 @@ func TestDig_MapAnyAny_WhitelistedKeyTypes(t *testing.T) {
 	}
 }
 
+// TestDig_MapAnyAny_NonWhitelistedKeyTypes is the negative twin of
+// TestDig_MapAnyAny_WhitelistedKeyTypes. It locks the whitelist boundary
+// in place: hashable key types that are deliberately NOT on the whitelist
+// must return (zero, false) even when the map literally contains such a
+// key. If someone widens the switch in walk (e.g. adds int8), this test
+// must be updated in lockstep — the whitelist is a wall, not a suggestion.
+func TestDig_MapAnyAny_NonWhitelistedKeyTypes(t *testing.T) {
+	type structKey struct{ ID int }
+	ptrTarget := 1
+	cases := []struct {
+		name string
+		data map[any]any
+		key  any
+	}{
+		{"int8", map[any]any{int8(1): "v"}, int8(1)},
+		{"int16", map[any]any{int16(1): "v"}, int16(1)},
+		{"uint8", map[any]any{uint8(1): "v"}, uint8(1)},
+		{"uint16", map[any]any{uint16(1): "v"}, uint16(1)},
+		{"uintptr", map[any]any{uintptr(1): "v"}, uintptr(1)},
+		{"complex64", map[any]any{complex64(1 + 2i): "v"}, complex64(1 + 2i)},
+		{"complex128", map[any]any{complex128(1 + 2i): "v"}, complex128(1 + 2i)},
+		{"struct", map[any]any{structKey{ID: 1}: "v"}, structKey{ID: 1}},
+		{"array", map[any]any{[2]int{1, 2}: "v"}, [2]int{1, 2}},
+		{"pointer", map[any]any{&ptrTarget: "v"}, &ptrTarget},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, ok := dig.Dig[string](tc.data, tc.key); ok {
+				t.Errorf("expected ok=false for non-whitelisted key type %s", tc.name)
+			}
+		})
+	}
+}
+
+// TestDig_NilDataEmptyPath covers the documented edge case: nil data with
+// an empty path is treated as a nil leaf. Dig[any] and At both return
+// (nil, true); Has returns true; Dig[string] returns (zero, false)
+// because a nil leaf cannot satisfy a concrete type.
+func TestDig_NilDataEmptyPath(t *testing.T) {
+	if v, ok := dig.Dig[any](nil); !ok || v != nil {
+		t.Errorf("Dig[any](nil): got (%v, %v), want (<nil>, true)", v, ok)
+	}
+	if v, ok := dig.At(nil); !ok || v != nil {
+		t.Errorf("At(nil): got (%v, %v), want (<nil>, true)", v, ok)
+	}
+	if !dig.Has(nil) {
+		t.Error("Has(nil): want true")
+	}
+	if _, ok := dig.Dig[string](nil); ok {
+		t.Error("Dig[string](nil): want ok=false (nil leaf cannot be a concrete string)")
+	}
+}
+
 // TestDig_TypedNilPointerLeaf confirms that a typed nil pointer stored in
 // an any is returned as a successful (nil, true) result when T matches the
 // pointer type. Typed nils in interface values are not == nil, so the

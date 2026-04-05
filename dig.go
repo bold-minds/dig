@@ -5,8 +5,12 @@
 // modifies its input. All functions are safe for concurrent use, provided
 // the caller does not mutate the input concurrently.
 //
-// A nil data argument always returns (zero, false) / false, regardless of
-// path length, including an empty path.
+// A nil data argument with a non-empty path always fails: there is
+// nothing to navigate into, so Dig returns (zero, false) and Has
+// returns false. With an empty path, nil data is treated as a nil leaf:
+// Dig[any](nil) and At(nil) return (nil, true), and Has(nil) returns
+// true. This keeps the "nil leaf is a real value for interface T" rule
+// consistent whether the nil sits at the top of the tree or at a leaf.
 //
 // For documentation and examples, see https://github.com/bold-minds/dig.
 package dig
@@ -37,11 +41,14 @@ package dig
 // commonly produced by JSON/YAML unmarshalling, plus the signed/unsigned
 // integer and floating-point widths: string, bool, int, int32, int64,
 // uint, uint32, uint64, float32, float64. Other key types — including
-// hashable ones like structs or int8 — are rejected with (zero, false)
-// rather than used as a lookup key. This whitelist exists so that an
-// unhashable path value (e.g. a slice) cannot trigger a runtime panic
-// from Go's map lookup, preserving the never-panic guarantee without
-// reflection.
+// hashable ones like int8, int16, uint8, uint16, uintptr, complex64,
+// complex128, structs, arrays, and pointers — are rejected with
+// (zero, false) rather than used as a lookup key, even when the map
+// literally contains such a key. Convert narrow integer keys (e.g. a
+// YAML decoder that produces uint8) to int or int64 before calling Dig.
+// This whitelist exists so that an unhashable path value (e.g. a slice)
+// cannot trigger a runtime panic from Go's map lookup, preserving the
+// never-panic guarantee without reflection.
 //
 // Typed containers like map[string]string or []string are not walked;
 // use encoding/json or similar to unmarshal into any first.
@@ -63,6 +70,10 @@ func Dig[T any](data any, path ...any) (T, bool) {
 		}
 		return zero, false
 	}
+	// Non-nil leaves fall through to the generic type assertion, which
+	// handles interface T via the runtime's itab check: if T is an
+	// interface type and current satisfies it, the assertion succeeds;
+	// otherwise ok is false and we return (zero, false).
 	result, ok := current.(T)
 	if !ok {
 		return zero, false
@@ -98,17 +109,20 @@ func At(data any, path ...any) (any, bool) {
 
 // walk navigates a path through nested data structures. It returns the
 // final value and true on success, or (nil, false) on any navigation
-// failure: nil input, missing key, wrong intermediate type, or
-// out-of-bounds index.
+// failure: missing key, wrong intermediate type, or out-of-bounds index.
+// Nil data with an empty path returns (nil, true) — the nil leaf case.
 //
 // Path element types are matched against the current node type:
 // string keys navigate maps, non-negative int indices navigate slices.
 func walk(data any, path []any) (any, bool) {
-	if data == nil {
-		return nil, false
-	}
 	current := data
 	for _, key := range path {
+		// A nil intermediate has no children; any further navigation
+		// must fail. This also handles the nil-data + non-empty-path
+		// case: we enter the loop with current == nil and immediately
+		// fall through to the default branch below. With an empty
+		// path, the loop is skipped entirely and nil data is returned
+		// as a nil leaf (which Dig then handles per the T rules).
 		switch v := current.(type) {
 		case map[string]any:
 			strKey, ok := key.(string)

@@ -67,6 +67,34 @@ func ExampleDig_fromJSON() {
 	// b
 }
 
+// ExampleDig_mapAnyAny demonstrates walking a map[any]any — the container
+// type that gopkg.in/yaml.v3 and a few other decoders produce by default.
+// Only whitelisted hashable primitive keys are accepted (see the package
+// docs); narrow integer keys like uint8 must be converted to int first.
+func ExampleDig_mapAnyAny() {
+	// Shape you'd get from a YAML decoder that produces map[any]any.
+	data := map[any]any{
+		"server": map[any]any{
+			"host":    "localhost",
+			int(8080): "http",
+			true:      "tls-enabled",
+		},
+	}
+
+	host, _ := dig.Dig[string](data, "server", "host")
+	fmt.Println(host)
+
+	proto, _ := dig.Dig[string](data, "server", int(8080))
+	fmt.Println(proto)
+
+	tls, _ := dig.Dig[string](data, "server", true)
+	fmt.Println(tls)
+	// Output:
+	// localhost
+	// http
+	// tls-enabled
+}
+
 func ExampleDigOr() {
 	cfg := map[string]any{
 		"host": "example.com",

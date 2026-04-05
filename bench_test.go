@@ -30,6 +30,17 @@ var (
 			map[string]any{"name": "carol", "role": "admin"},
 		},
 	}
+
+	// mapAnyAnyData exercises the map[any]any path, which pays the cost
+	// of the extra key-type whitelist switch. Benchmarked so regressions
+	// in that guard are caught alongside the hot string-map path.
+	mapAnyAnyData = map[any]any{
+		"name":       "alice",
+		int(1):       "one",
+		int64(2):     "two",
+		float64(3.5): "three-point-five",
+		true:         "yes",
+	}
 )
 
 func BenchmarkDig_Shallow(b *testing.B) {
@@ -99,5 +110,26 @@ func BenchmarkAt_Miss(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_, _ = dig.At(shallowData, "missing")
+	}
+}
+
+func BenchmarkDig_MapAnyAny_StringKey(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = dig.Dig[string](mapAnyAnyData, "name")
+	}
+}
+
+func BenchmarkDig_MapAnyAny_IntKey(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = dig.Dig[string](mapAnyAnyData, int(1))
+	}
+}
+
+func BenchmarkDig_MapAnyAny_Miss(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = dig.Dig[string](mapAnyAnyData, "missing")
 	}
 }

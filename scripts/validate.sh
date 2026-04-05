@@ -113,7 +113,7 @@ check_environment() {
     
     local go_version
     go_version=$(go version | grep -oE 'go[0-9]+\.[0-9]+' | head -1 | sed 's/^go//')
-    local required_version="1.21"
+    local required_version="1.26"
     
     if [[ $(echo -e "$required_version\n$go_version" | sort -V | head -n1) != "$required_version" ]]; then
         echo "Go version $go_version is below required $required_version"

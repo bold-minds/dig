@@ -1,13 +1,8 @@
 # dig
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bold-minds/dig.svg)](https://pkg.go.dev/github.com/bold-minds/dig)
-[![Go Version](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/go-version.json)](https://golang.org/doc/go1.26)
-[![Latest Release](https://img.shields.io/github/v/release/bold-minds/dig?logo=github&color=blueviolet)](https://github.com/bold-minds/dig/releases)
-[![Last Updated](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/last-updated.json)](https://github.com/bold-minds/dig/commits)
-[![golangci-lint](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/golangci-lint.json)](https://github.com/bold-minds/dig/actions/workflows/test.yaml)
-[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/coverage.json)](https://github.com/bold-minds/dig/actions/workflows/test.yaml)
-[![Dependabot](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/dependabot.json)](https://github.com/bold-minds/dig/security/dependabot)
+[![Build](https://img.shields.io/github/actions/workflow/status/bold-minds/dig/test.yaml?branch=main&label=tests)](https://github.com/bold-minds/dig/actions/workflows/test.yaml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/bold-minds/dig)](go.mod)
 
 **Nested data navigation for Go, one line.**
 

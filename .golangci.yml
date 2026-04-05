@@ -57,6 +57,10 @@ linters:
     paths:
       - third_party$
       - builtin$
+      # examples/ holds godoc Example functions — prose, not prod code.
+      # They intentionally use weak assertions and short-form patterns
+      # to stay readable on pkg.go.dev. Linting them produces churn
+      # without catching bugs in the library itself.
       - examples$
 issues:
   max-same-issues: 50
@@ -66,4 +70,8 @@ formatters:
     paths:
       - third_party$
       - builtin$
+      # examples/ holds godoc Example functions — prose, not prod code.
+      # They intentionally use weak assertions and short-form patterns
+      # to stay readable on pkg.go.dev. Linting them produces churn
+      # without catching bugs in the library itself.
       - examples$

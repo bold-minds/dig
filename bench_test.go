@@ -133,3 +133,16 @@ func BenchmarkDig_MapAnyAny_Miss(b *testing.B) {
 		_, _ = dig.Dig[string](mapAnyAnyData, "missing")
 	}
 }
+
+// BenchmarkDig_MapAnyAny_NonWhitelistedKey measures the failure path
+// through the whitelist switch. If a regression accidentally reflects
+// on the key type (instead of using the compile-time type switch), the
+// alloc count here will jump from 0 and catch it.
+func BenchmarkDig_MapAnyAny_NonWhitelistedKey(b *testing.B) {
+	b.ReportAllocs()
+	type k struct{ ID int }
+	key := k{ID: 1}
+	for b.Loop() {
+		_, _ = dig.Dig[string](mapAnyAnyData, key)
+	}
+}

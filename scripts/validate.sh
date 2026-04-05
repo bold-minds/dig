@@ -268,19 +268,15 @@ validate_coverage() {
     
     print_info "Analyzing test coverage..."
     
-    # Get main package coverage (from test output, not total which includes examples)
-    local coverage_percent=""
-    # Extract main package coverage from the test output (e.g., "coverage: 84.7% of statements")
-    if [[ -f "coverage.out" ]]; then
-        # Try to get main package coverage from go test output or coverage file
-        coverage_percent=$(go test -coverprofile=temp_coverage.out ./. 2>/dev/null | grep "coverage:" | grep -oE '[0-9]+\.[0-9]+%' | sed 's/%//' | head -1 || true)
-        rm -f temp_coverage.out 2>/dev/null
-
-        # If that fails, fall back to total coverage
-        if [[ -z "$coverage_percent" ]]; then
-            coverage_percent=$(go tool cover -func=coverage.out | grep total | grep -oE '[0-9]+\.[0-9]+')
-        fi
-    else
+    # Read coverage total from the profile we already generated in
+    # run_unit_tests. Do NOT re-run `go test` just to grep stdout — that
+    # was the previous approach, and it (a) silently re-ran the whole
+    # test suite, (b) suppressed errors with `2>/dev/null || true`, and
+    # (c) relied on `./.` meaning "just the root package." The profile
+    # is the source of truth; `go tool cover -func` is deterministic.
+    local coverage_percent
+    coverage_percent=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+    if [[ -z "$coverage_percent" ]]; then
         coverage_percent="0.0"
     fi
     
@@ -408,14 +404,12 @@ generate_badges() {
     
     # Generate coverage badge (if coverage file exists)
     if [[ -f "coverage.out" ]]; then
-        local coverage_percent=""
-        # Use the same logic as coverage validation to get main package coverage
-        coverage_percent=$(go test -coverprofile=temp_coverage.out ./. 2>/dev/null | grep "coverage:" | grep -oE '[0-9]+\.[0-9]+%' | sed 's/%//' | head -1 || true)
-        rm -f temp_coverage.out 2>/dev/null
-
-        # If that fails, fall back to total coverage
+        # Read the total directly from the profile (same approach as
+        # validate_coverage). No re-running `go test`.
+        local coverage_percent
+        coverage_percent=$(go tool cover -func=coverage.out 2>/dev/null | awk '/^total:/ {gsub("%","",$3); print $3}')
         if [[ -z "$coverage_percent" ]]; then
-            coverage_percent=$(go tool cover -func=coverage.out 2>/dev/null | grep total | awk '{print $3}' | sed 's/%//' || echo "0")
+            coverage_percent="0"
         fi
         
         # Determine color based on coverage
@@ -443,10 +437,26 @@ generate_badges() {
     LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
     echo '{"schemaVersion":1,"label":"last updated","message":"'$LAST_COMMIT_DATE'","color":"teal"}' > .github/badges/last-updated.json
     
-    # Comprehensive security badge (Dependabot + Code Scanning)
+    # Comprehensive security badge (Dependabot + Code Scanning).
+    # Derive owner/repo from `git remote get-url origin` so a fork
+    # running `./scripts/validate.sh` queries its own alerts, not
+    # upstream's. Previously hardcoded to bold-minds/dig — forks would
+    # silently read upstream numbers and get the wrong answer.
+    local repo_slug=""
     if command -v gh >/dev/null 2>&1; then
-        DEPENDABOT_ALERTS=$(gh api repos/bold-minds/dig/dependabot/alerts --jq 'length' 2>/dev/null || echo "0")
-        CODE_SCANNING_ALERTS=$(gh api repos/bold-minds/dig/code-scanning/alerts --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
+        repo_slug=$(git remote get-url origin 2>/dev/null \
+            | sed -E 's#(^git@github\.com:|^https://github\.com/)##; s#\.git$##' \
+            || echo "")
+    fi
+    if [[ -z "$repo_slug" ]]; then
+        # Either gh is not installed, or no git remote is configured.
+        # Emit a neutral badge and move on — the rest of the function
+        # still needs to produce go-version and last-updated badges.
+        echo '{"schemaVersion":1,"label":"security","message":"unknown","color":"lightgrey"}' > .github/badges/dependabot.json
+        print_warning "Security badge: gh or git remote missing; emitted neutral badge"
+    else
+        DEPENDABOT_ALERTS=$(gh api "repos/$repo_slug/dependabot/alerts" --jq 'length' 2>/dev/null || echo "0")
+        CODE_SCANNING_ALERTS=$(gh api "repos/$repo_slug/code-scanning/alerts" --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
         TOTAL_ALERTS=$((DEPENDABOT_ALERTS + CODE_SCANNING_ALERTS))
         OPEN_PRS=$(gh pr list --author "app/dependabot" --state open --json number --jq 'length' 2>/dev/null || echo "0")
         
@@ -468,9 +478,6 @@ generate_badges() {
             echo '{"schemaVersion":1,"label":"security","message":"all clear","color":"brightgreen"}' > .github/badges/dependabot.json
             print_info "🟢 Security badge: all clear (green)"
         fi
-    else
-        echo '{"schemaVersion":1,"label":"security","message":"gh required","color":"yellow"}' > .github/badges/dependabot.json
-        print_info "⚠️  Security badge: GitHub CLI required for dynamic status"
     fi
     
     print_info "Badge JSON files generated in ./.github/badges/ directory 🏷️"

@@ -111,10 +111,15 @@ func FuzzWalk(f *testing.F) {
 
 		// None of these may panic. We don't care about the return
 		// values — only that every entry point stays panic-free.
+		// DigOr is exercised with concrete T (string, int) as well as
+		// any, because the fallback-vs-leaf distinction has had bugs
+		// on concrete T historically (see TestDig_NilLeafWithAnyType).
 		_, _ = dig.Dig[any](data, path...)
 		_, _ = dig.Dig[string](data, path...)
 		_, _ = dig.Dig[int](data, path...)
 		_ = dig.DigOr[any](data, "fallback", path...)
+		_ = dig.DigOr[string](data, "fallback", path...)
+		_ = dig.DigOr[int](data, -1, path...)
 		_ = dig.Has(data, path...)
 		_, _ = dig.At(data, path...)
 	})

@@ -1,6 +1,8 @@
 package dig_test
 
 import (
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/bold-minds/dig"
@@ -170,9 +172,13 @@ func TestDig_MapAnyAny_WhitelistedKeyTypes(t *testing.T) {
 	}{
 		{"string", map[any]any{"k": "v"}, "k"},
 		{"int", map[any]any{int(1): "v"}, int(1)},
+		{"int8", map[any]any{int8(1): "v"}, int8(1)},
+		{"int16", map[any]any{int16(1): "v"}, int16(1)},
 		{"int32", map[any]any{int32(1): "v"}, int32(1)},
 		{"int64", map[any]any{int64(1): "v"}, int64(1)},
 		{"uint", map[any]any{uint(1): "v"}, uint(1)},
+		{"uint8", map[any]any{uint8(1): "v"}, uint8(1)},
+		{"uint16", map[any]any{uint16(1): "v"}, uint16(1)},
 		{"uint32", map[any]any{uint32(1): "v"}, uint32(1)},
 		{"uint64", map[any]any{uint64(1): "v"}, uint64(1)},
 		{"float32", map[any]any{float32(1.5): "v"}, float32(1.5)},
@@ -193,8 +199,8 @@ func TestDig_MapAnyAny_WhitelistedKeyTypes(t *testing.T) {
 // TestDig_MapAnyAny_WhitelistedKeyTypes. It locks the whitelist boundary
 // in place: hashable key types that are deliberately NOT on the whitelist
 // must return (zero, false) even when the map literally contains such a
-// key. If someone widens the switch in walk (e.g. adds int8), this test
-// must be updated in lockstep — the whitelist is a wall, not a suggestion.
+// key. If someone widens the switch in walk, this test must be updated
+// in lockstep — the whitelist is a wall, not a suggestion.
 func TestDig_MapAnyAny_NonWhitelistedKeyTypes(t *testing.T) {
 	type structKey struct{ ID int }
 	ptrTarget := 1
@@ -203,10 +209,6 @@ func TestDig_MapAnyAny_NonWhitelistedKeyTypes(t *testing.T) {
 		data map[any]any
 		key  any
 	}{
-		{"int8", map[any]any{int8(1): "v"}, int8(1)},
-		{"int16", map[any]any{int16(1): "v"}, int16(1)},
-		{"uint8", map[any]any{uint8(1): "v"}, uint8(1)},
-		{"uint16", map[any]any{uint16(1): "v"}, uint16(1)},
 		{"uintptr", map[any]any{uintptr(1): "v"}, uintptr(1)},
 		{"complex64", map[any]any{complex64(1 + 2i): "v"}, complex64(1 + 2i)},
 		{"complex128", map[any]any{complex128(1 + 2i): "v"}, complex128(1 + 2i)},
@@ -275,6 +277,92 @@ func TestDig_NilLeafWithConcreteType(t *testing.T) {
 	data := map[string]any{"x": nil}
 	if _, ok := dig.Dig[string](data, "x"); ok {
 		t.Error("expected ok=false for nil leaf with concrete type T")
+	}
+}
+
+// TestDig_NonAnyInterfaceT verifies that Dig works with any interface
+// type T, not just `any`. The any(zero) == nil check in dig.go relies on
+// behavior that generalizes to all interface types: the zero value of
+// an interface type boxed in any is the nil interface itself, regardless
+// of which interface it is. A *strings.Reader satisfies io.Reader, so
+// asserting to io.Reader should succeed.
+func TestDig_NonAnyInterfaceT(t *testing.T) {
+	data := map[string]any{"r": strings.NewReader("hello")}
+	got, ok := dig.Dig[io.Reader](data, "r")
+	if !ok {
+		t.Fatal("expected ok=true for *strings.Reader assertable to io.Reader")
+	}
+	if got == nil {
+		t.Error("expected non-nil io.Reader")
+	}
+}
+
+// TestDig_NilLeafNonAnyInterfaceT is the nil-leaf companion: a literal
+// nil stored under an any key must be returned as (nil, true) for ANY
+// interface T, because any(zero) == nil is true for every interface type.
+// This locks the guarantee that the nil-leaf rule is not special-cased
+// to T=any but applies to all interface T.
+func TestDig_NilLeafNonAnyInterfaceT(t *testing.T) {
+	data := map[string]any{"r": nil}
+	got, ok := dig.Dig[io.Reader](data, "r")
+	if !ok {
+		t.Fatal("expected ok=true for nil leaf with interface T=io.Reader")
+	}
+	if got != nil {
+		t.Errorf("got %v, want nil io.Reader", got)
+	}
+}
+
+// TestDig_ReturnsAliasNotCopy documents and locks the aliasing behavior
+// described in the package doc. Mutating a returned slice or map MUST
+// mutate the source — dig never copies. If a future change introduces
+// defensive copying, this test must be updated in lockstep with the doc.
+func TestDig_ReturnsAliasNotCopy(t *testing.T) {
+	// Slice alias
+	data := map[string]any{
+		"items": []any{"a", "b", "c"},
+	}
+	items, ok := dig.Dig[[]any](data, "items")
+	if !ok {
+		t.Fatal("expected ok=true for []any leaf")
+	}
+	items[0] = "MUTATED"
+	source := data["items"].([]any) //nolint:errcheck // test asserts known type
+	if source[0] != "MUTATED" {
+		t.Errorf("slice alias broken: source[0]=%v, want MUTATED", source[0])
+	}
+
+	// Map alias
+	m, ok := dig.Dig[map[string]any](
+		map[string]any{"inner": map[string]any{"k": "v"}},
+		"inner",
+	)
+	if !ok {
+		t.Fatal("expected ok=true for map[string]any leaf")
+	}
+	m["new"] = "added"
+	if m["new"] != "added" {
+		t.Error("map alias broken: write did not persist")
+	}
+}
+
+// TestDig_MapAnyAnyNestedInStringMap exercises a map[any]any nested
+// inside a map[string]any with a path that crosses the container-type
+// boundary. Fuzz covers this statistically; this is the named regression.
+func TestDig_MapAnyAnyNestedInStringMap(t *testing.T) {
+	data := map[string]any{
+		"meta": map[any]any{
+			42:     "answer",
+			"name": "mixed",
+		},
+	}
+	got, ok := dig.Dig[string](data, "meta", 42)
+	if !ok || got != "answer" {
+		t.Errorf("int key across boundary: got (%q, %v), want (answer, true)", got, ok)
+	}
+	got, ok = dig.Dig[string](data, "meta", "name")
+	if !ok || got != "mixed" {
+		t.Errorf("string key across boundary: got (%q, %v), want (mixed, true)", got, ok)
 	}
 }
 

@@ -5,6 +5,14 @@
 // modifies its input. All functions are safe for concurrent use, provided
 // the caller does not mutate the input concurrently.
 //
+// Aliasing: when a returned value is a slice or map, it is the same
+// underlying container stored in the input — not a copy. Mutating the
+// returned container (e.g. appending to a returned []any, or writing
+// keys into a returned map[string]any) also mutates the source. dig
+// itself never modifies its input; isolation from caller mutation is
+// the caller's responsibility. Copy the returned container if you need
+// an independent value.
+//
 // A nil data argument with a non-empty path always fails: there is
 // nothing to navigate into, so Dig returns (zero, false) and Has
 // returns false. With an empty path, nil data is treated as a nil leaf:
@@ -37,18 +45,20 @@ package dig
 //   - map[any]any (see key whitelist below)
 //   - []any (non-negative int indices)
 //
-// For map[any]any, the path key must be one of the Go primitive types
-// commonly produced by JSON/YAML unmarshalling, plus the signed/unsigned
-// integer and floating-point widths: string, bool, int, int32, int64,
-// uint, uint32, uint64, float32, float64. Other key types — including
-// hashable ones like int8, int16, uint8, uint16, uintptr, complex64,
-// complex128, structs, arrays, and pointers — are rejected with
-// (zero, false) rather than used as a lookup key, even when the map
-// literally contains such a key. Convert narrow integer keys (e.g. a
-// YAML decoder that produces uint8) to int or int64 before calling Dig.
-// This whitelist exists so that an unhashable path value (e.g. a slice)
+// For map[any]any, the path key must be one of the hashable primitive
+// types commonly produced by JSON/YAML/CBOR/MessagePack unmarshalling:
+// string, bool, all signed integer widths (int, int8, int16, int32,
+// int64), all unsigned integer widths (uint, uint8, uint16, uint32,
+// uint64), and the floating-point widths (float32, float64). Other
+// key types — uintptr, complex64, complex128, structs, arrays, and
+// pointers — are rejected with (zero, false) rather than used as a
+// lookup key, even when the map literally contains such a key. This
+// whitelist exists so that an unhashable path value (e.g. a slice)
 // cannot trigger a runtime panic from Go's map lookup, preserving the
-// never-panic guarantee without reflection.
+// never-panic guarantee without reflection. The narrow integer widths
+// are included because decoders like CBOR and MessagePack routinely
+// produce map[any]any with uint8 or int8 keys, and excluding them
+// would be a foot-gun that the hashability rationale does not require.
 //
 // Typed containers like map[string]string or []string are not walked;
 // use encoding/json or similar to unmarshal into any first.
@@ -139,8 +149,17 @@ func walk(data any, path []any) (any, bool) {
 			// Using an arbitrary value as a map key would panic at runtime
 			// if the caller passed an unhashable value (e.g., a slice).
 			// This preserves the "never panics" guarantee without reflection.
+			//
+			// This list is the source of truth for the whitelist. Any
+			// change here must be mirrored in the package doc on Dig,
+			// TestDig_MapAnyAny_WhitelistedKeyTypes, and
+			// TestDig_MapAnyAny_NonWhitelistedKeyTypes — the positive and
+			// negative twin tests lock this boundary in place.
 			switch key.(type) {
-			case string, int, int64, int32, float64, float32, bool, uint, uint64, uint32:
+			case string, bool,
+				int, int8, int16, int32, int64,
+				uint, uint8, uint16, uint32, uint64,
+				float32, float64:
 			default:
 				return nil, false
 			}

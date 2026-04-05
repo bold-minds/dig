@@ -33,61 +33,71 @@ var (
 )
 
 func BenchmarkDig_Shallow(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_, _ = dig.Dig[string](shallowData, "name")
 	}
 }
 
 func BenchmarkDig_Deep(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_, _ = dig.Dig[string](deepData, "level1", "level2", "level3", "level4", "level5")
 	}
 }
 
 func BenchmarkDig_Mixed(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_, _ = dig.Dig[string](mixedData, "users", 1, "name")
 	}
 }
 
 func BenchmarkDig_Miss(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_, _ = dig.Dig[string](shallowData, "missing")
 	}
 }
 
 func BenchmarkDigOr_Hit(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_ = dig.DigOr(shallowData, "default", "name")
 	}
 }
 
 func BenchmarkDigOr_Miss(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_ = dig.DigOr(shallowData, "default", "missing")
 	}
 }
 
 func BenchmarkHas_Hit(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_ = dig.Has(shallowData, "name")
 	}
 }
 
 func BenchmarkHas_Miss(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_ = dig.Has(shallowData, "missing")
 	}
 }
 
 func BenchmarkAt_Hit(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_, _ = dig.At(shallowData, "name")
 	}
 }
 
 func BenchmarkAt_Miss(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_, _ = dig.At(shallowData, "missing")
 	}
 }

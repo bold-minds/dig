@@ -159,6 +159,53 @@ func TestDig_MapAnyAny_UnsupportedKeyType(t *testing.T) {
 	}
 }
 
+// TestDig_MapAnyAny_WhitelistedKeyTypes exercises every key type on the
+// map[any]any whitelist end-to-end to confirm the switch in walk matches
+// the documented set.
+func TestDig_MapAnyAny_WhitelistedKeyTypes(t *testing.T) {
+	cases := []struct {
+		name string
+		data map[any]any
+		key  any
+	}{
+		{"string", map[any]any{"k": "v"}, "k"},
+		{"int", map[any]any{int(1): "v"}, int(1)},
+		{"int32", map[any]any{int32(1): "v"}, int32(1)},
+		{"int64", map[any]any{int64(1): "v"}, int64(1)},
+		{"uint", map[any]any{uint(1): "v"}, uint(1)},
+		{"uint32", map[any]any{uint32(1): "v"}, uint32(1)},
+		{"uint64", map[any]any{uint64(1): "v"}, uint64(1)},
+		{"float32", map[any]any{float32(1.5): "v"}, float32(1.5)},
+		{"float64", map[any]any{float64(1.5): "v"}, float64(1.5)},
+		{"bool", map[any]any{true: "v"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := dig.Dig[string](tc.data, tc.key)
+			if !ok || got != "v" {
+				t.Errorf("got (%q, %v), want (v, true)", got, ok)
+			}
+		})
+	}
+}
+
+// TestDig_TypedNilPointerLeaf confirms that a typed nil pointer stored in
+// an any is returned as a successful (nil, true) result when T matches the
+// pointer type. Typed nils in interface values are not == nil, so the
+// "literal nil leaf" rule does not apply.
+func TestDig_TypedNilPointerLeaf(t *testing.T) {
+	type Foo struct{ X int }
+	var typedNil *Foo
+	data := map[string]any{"x": typedNil}
+	got, ok := dig.Dig[*Foo](data, "x")
+	if !ok {
+		t.Fatal("expected ok=true for typed nil pointer")
+	}
+	if got != nil {
+		t.Errorf("got %v, want nil *Foo", got)
+	}
+}
+
 // Regression: Dig[any] and Has must agree on literal nil leaf values.
 // Previously Has returned true but Dig[any]/DigOr[any] returned (nil, false)
 // because type asserting a nil interface to an interface type yields ok=false.
@@ -222,6 +269,17 @@ func TestDigOr_TypeMismatch(t *testing.T) {
 func TestDigOr_NilData(t *testing.T) {
 	if got := dig.DigOr[int](nil, 42, "any"); got != 42 {
 		t.Errorf("got %d, want 42", got)
+	}
+}
+
+func TestDigOr_NilLeafWithAnyType(t *testing.T) {
+	// Parallels TestDig_NilLeafWithAnyType: DigOr[any] must agree with
+	// Dig[any] that a literal nil leaf is a successful result, not a
+	// fallback trigger.
+	data := map[string]any{"x": nil}
+	got := dig.DigOr[any](data, "fallback", "x")
+	if got != nil {
+		t.Errorf("got %v, want <nil> (the real leaf value, not fallback)", got)
 	}
 }
 

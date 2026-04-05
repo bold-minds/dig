@@ -1,3 +1,3 @@
 module github.com/bold-minds/dig
 
-go 1.21
+go 1.26

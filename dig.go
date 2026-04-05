@@ -2,7 +2,11 @@
 //
 // It replaces chains of .(map[string]any) type assertions with a single
 // function call. Every operation is nil-safe, never panics, and never
-// modifies its input.
+// modifies its input. All functions are safe for concurrent use, provided
+// the caller does not mutate the input concurrently.
+//
+// A nil data argument always returns (zero, false) / false, regardless of
+// path length, including an empty path.
 //
 // For documentation and examples, see https://github.com/bold-minds/dig.
 package dig
@@ -20,12 +24,24 @@ package dig
 //
 // A literal nil leaf value is treated as a successful result when T is
 // an interface type (such as any): Dig returns (nil, true). For concrete
-// T, a nil leaf returns (zero, false).
+// T, a nil leaf returns (zero, false). Note that a typed nil pointer
+// (e.g. (*Foo)(nil) stored in an any) is not a literal nil and matches
+// T=*Foo normally, returning (nil, true).
 //
 // Supported source types along the path:
 //   - map[string]any (string keys)
-//   - map[any]any (whitelisted comparable keys: string, int, int64, float64, bool)
+//   - map[any]any (see key whitelist below)
 //   - []any (non-negative int indices)
+//
+// For map[any]any, the path key must be one of the Go primitive types
+// commonly produced by JSON/YAML unmarshalling, plus the signed/unsigned
+// integer and floating-point widths: string, bool, int, int32, int64,
+// uint, uint32, uint64, float32, float64. Other key types — including
+// hashable ones like structs or int8 — are rejected with (zero, false)
+// rather than used as a lookup key. This whitelist exists so that an
+// unhashable path value (e.g. a slice) cannot trigger a runtime panic
+// from Go's map lookup, preserving the never-panic guarantee without
+// reflection.
 //
 // Typed containers like map[string]string or []string are not walked;
 // use encoding/json or similar to unmarshal into any first.
@@ -36,7 +52,11 @@ func Dig[T any](data any, path ...any) (T, bool) {
 		return zero, false
 	}
 	// A nil leaf is a valid value when T is an interface type.
-	// (any(zero) == nil is true exactly when T is an interface.)
+	// any(zero) == nil is true exactly when T is an interface type: the
+	// zero value of a concrete type boxed in any carries a non-nil type
+	// descriptor, while the zero value of an interface type boxed in any
+	// is the nil interface itself. This lets us branch on "is T an
+	// interface?" at runtime without reflection.
 	if current == nil {
 		if any(zero) == nil {
 			return zero, true

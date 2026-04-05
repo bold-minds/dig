@@ -139,6 +139,61 @@ func TestDig_AnyType(t *testing.T) {
 	}
 }
 
+// Regression: a non-hashable key into a map[any]any must not panic.
+// Previously this triggered `panic: hash of unhashable type ...` from
+// Go's map runtime, breaking the never-panic guarantee.
+func TestDig_MapAnyAny_UnhashableKeyDoesNotPanic(t *testing.T) {
+	data := map[any]any{"k": "v"}
+	// Slice is not a comparable/hashable type.
+	if _, ok := dig.Dig[string](data, []int{1}); ok {
+		t.Error("expected ok=false for unhashable key into map[any]any")
+	}
+}
+
+func TestDig_MapAnyAny_UnsupportedKeyType(t *testing.T) {
+	// Struct keys are comparable but not whitelisted.
+	type k struct{ ID int }
+	data := map[any]any{k{ID: 1}: "v"}
+	if _, ok := dig.Dig[string](data, k{ID: 1}); ok {
+		t.Error("expected ok=false for non-whitelisted key type")
+	}
+}
+
+// Regression: Dig[any] and Has must agree on literal nil leaf values.
+// Previously Has returned true but Dig[any]/DigOr[any] returned (nil, false)
+// because type asserting a nil interface to an interface type yields ok=false.
+func TestDig_NilLeafWithAnyType(t *testing.T) {
+	data := map[string]any{"x": nil}
+	got, ok := dig.Dig[any](data, "x")
+	if !ok || got != nil {
+		t.Errorf("Dig[any] on nil leaf: got (%v, %v), want (<nil>, true)", got, ok)
+	}
+}
+
+func TestDig_NilLeafWithConcreteType(t *testing.T) {
+	// A nil leaf should still fail for concrete T — there is no string value.
+	data := map[string]any{"x": nil}
+	if _, ok := dig.Dig[string](data, "x"); ok {
+		t.Error("expected ok=false for nil leaf with concrete type T")
+	}
+}
+
+func TestDig_AtAndHasAgreeOnNilLeaf(t *testing.T) {
+	// At, Has, and Dig[any] must all agree that a nil leaf exists.
+	data := map[string]any{"x": nil}
+	if !dig.Has(data, "x") {
+		t.Error("Has: want true for nil leaf")
+	}
+	val, ok := dig.At(data, "x")
+	if !ok || val != nil {
+		t.Errorf("At: got (%v, %v), want (<nil>, true)", val, ok)
+	}
+	dv, dok := dig.Dig[any](data, "x")
+	if !dok || dv != nil {
+		t.Errorf("Dig[any]: got (%v, %v), want (<nil>, true)", dv, dok)
+	}
+}
+
 // =============================================================================
 // DigOr
 // =============================================================================

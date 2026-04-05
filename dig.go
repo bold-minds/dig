@@ -18,14 +18,29 @@ package dig
 //	raw, _ := dig.At(data, "user", "age")
 //	age := to.Int(raw)
 //
+// A literal nil leaf value is treated as a successful result when T is
+// an interface type (such as any): Dig returns (nil, true). For concrete
+// T, a nil leaf returns (zero, false).
+//
 // Supported source types along the path:
 //   - map[string]any (string keys)
-//   - map[any]any (any comparable keys)
+//   - map[any]any (whitelisted comparable keys: string, int, int64, float64, bool)
 //   - []any (non-negative int indices)
+//
+// Typed containers like map[string]string or []string are not walked;
+// use encoding/json or similar to unmarshal into any first.
 func Dig[T any](data any, path ...any) (T, bool) {
 	var zero T
 	current, ok := walk(data, path)
 	if !ok {
+		return zero, false
+	}
+	// A nil leaf is a valid value when T is an interface type.
+	// (any(zero) == nil is true exactly when T is an interface.)
+	if current == nil {
+		if any(zero) == nil {
+			return zero, true
+		}
 		return zero, false
 	}
 	result, ok := current.(T)
@@ -55,7 +70,8 @@ func Has(data any, path ...any) bool {
 
 // At returns the raw value at the given path without type matching.
 // Use when you need to inspect a value's actual type before handling it.
-// Equivalent to Dig[any] but named for the outcome.
+// Equivalent to Dig[any] but named for the outcome. A literal nil leaf
+// returns (nil, true) — matching Dig[any] and Has.
 func At(data any, path ...any) (any, bool) {
 	return walk(data, path)
 }
@@ -85,6 +101,15 @@ func walk(data any, path []any) (any, bool) {
 			}
 			current = val
 		case map[any]any:
+			// Restrict keys to a whitelist of hashable primitive types.
+			// Using an arbitrary value as a map key would panic at runtime
+			// if the caller passed an unhashable value (e.g., a slice).
+			// This preserves the "never panics" guarantee without reflection.
+			switch key.(type) {
+			case string, int, int64, int32, float64, float32, bool, uint, uint64, uint32:
+			default:
+				return nil, false
+			}
 			val, exists := v[key]
 			if !exists {
 				return nil, false

@@ -28,6 +28,7 @@ COVERAGE_THRESHOLD=${COVERAGE_THRESHOLD:-80}
 TEST_TIMEOUT=${TEST_TIMEOUT:-10m}
 INTEGRATION_TAG=${INTEGRATION_TAG:-integration}
 SKIP_INTEGRATION=${SKIP_INTEGRATION:-false}  # Flag to disable integration tests
+GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION:-v2.0.2}
 
 # 🎯 Helper functions
 print_header() {
@@ -110,8 +111,9 @@ check_environment() {
         return 1
     fi
     
-    local go_version=$(go version | grep -oP 'go\K[0-9]+\.[0-9]+')
-    local required_version="1.19"
+    local go_version
+    go_version=$(go version | grep -oE 'go[0-9]+\.[0-9]+' | head -1 | sed 's/^go//')
+    local required_version="1.21"
     
     if [[ $(echo -e "$required_version\n$go_version" | sort -V | head -n1) != "$required_version" ]]; then
         echo "Go version $go_version is below required $required_version"
@@ -138,8 +140,10 @@ check_environment() {
 
 # 🔍 Comprehensive linting with golangci-lint (includes security, TODOs, style)
 run_linting() {
-    # Add GOPATH/bin to PATH if not already there
-    local gopath_bin="$(go env GOPATH)/bin"
+    # Add GOPATH/bin to PATH if not already there.
+    # Declare and assign separately so `set -e` still sees a failing `go env`.
+    local gopath_bin
+    gopath_bin="$(go env GOPATH)/bin"
     if [[ ":$PATH:" != *":$gopath_bin:"* ]]; then
         export PATH="$gopath_bin:$PATH"
         print_info "Added $gopath_bin to PATH"
@@ -147,19 +151,19 @@ run_linting() {
     
     # Check if golangci-lint is available
     if ! command -v golangci-lint >/dev/null 2>&1; then
-        print_warning "golangci-lint not found, installing latest version (v2.x)..."
-        if ! go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; then
-            echo "Failed to install golangci-lint v2"
+        print_warning "golangci-lint not found, installing pinned version ${GOLANGCI_LINT_VERSION}..."
+        if ! go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"; then
+            echo "Failed to install golangci-lint ${GOLANGCI_LINT_VERSION}"
             echo "Try manual installation: https://golangci-lint.run/welcome/install/"
             return 1
         fi
-        print_info "golangci-lint v2 installed successfully"
+        print_info "golangci-lint ${GOLANGCI_LINT_VERSION} installed successfully"
     fi
     
     # Run golangci-lint
     local lint_output
-    lint_output=$(golangci-lint run --timeout=$TEST_TIMEOUT ./... 2>&1)
-    local lint_exit_code=$?
+    local lint_exit_code=0
+    lint_output=$(golangci-lint run --timeout=$TEST_TIMEOUT ./... 2>&1) || lint_exit_code=$?
     
     if [[ $lint_exit_code -ne 0 ]]; then
         echo "Linting failed:"
@@ -265,13 +269,13 @@ validate_coverage() {
     print_info "Analyzing test coverage..."
     
     # Get main package coverage (from test output, not total which includes examples)
-    local coverage_percent
+    local coverage_percent=""
     # Extract main package coverage from the test output (e.g., "coverage: 84.7% of statements")
     if [[ -f "coverage.out" ]]; then
         # Try to get main package coverage from go test output or coverage file
-        coverage_percent=$(go test -coverprofile=temp_coverage.out ./. 2>/dev/null | grep "coverage:" | grep -oE '[0-9]+\.[0-9]+%' | sed 's/%//' | head -1)
+        coverage_percent=$(go test -coverprofile=temp_coverage.out ./. 2>/dev/null | grep "coverage:" | grep -oE '[0-9]+\.[0-9]+%' | sed 's/%//' | head -1 || true)
         rm -f temp_coverage.out 2>/dev/null
-        
+
         # If that fails, fall back to total coverage
         if [[ -z "$coverage_percent" ]]; then
             coverage_percent=$(go tool cover -func=coverage.out | grep total | grep -oE '[0-9]+\.[0-9]+')
@@ -355,8 +359,10 @@ generate_badges() {
     # Create badges directory in .github
     mkdir -p .github/badges
     
-    # Add GOPATH/bin to PATH if not already there (for golangci-lint)
-    local gopath_bin="$(go env GOPATH)/bin"
+    # Add GOPATH/bin to PATH if not already there (for golangci-lint).
+    # Declare and assign separately so `set -e` still sees a failing `go env`.
+    local gopath_bin
+    gopath_bin="$(go env GOPATH)/bin"
     if [[ ":$PATH:" != *":$gopath_bin:"* ]]; then
         export PATH="$gopath_bin:$PATH"
     fi
@@ -402,11 +408,11 @@ generate_badges() {
     
     # Generate coverage badge (if coverage file exists)
     if [[ -f "coverage.out" ]]; then
-        local coverage_percent
+        local coverage_percent=""
         # Use the same logic as coverage validation to get main package coverage
-        coverage_percent=$(go test -coverprofile=temp_coverage.out ./. 2>/dev/null | grep "coverage:" | grep -oE '[0-9]+\.[0-9]+%' | sed 's/%//' | head -1)
+        coverage_percent=$(go test -coverprofile=temp_coverage.out ./. 2>/dev/null | grep "coverage:" | grep -oE '[0-9]+\.[0-9]+%' | sed 's/%//' | head -1 || true)
         rm -f temp_coverage.out 2>/dev/null
-        
+
         # If that fails, fall back to total coverage
         if [[ -z "$coverage_percent" ]]; then
             coverage_percent=$(go tool cover -func=coverage.out 2>/dev/null | grep total | awk '{print $3}' | sed 's/%//' || echo "0")
@@ -439,8 +445,8 @@ generate_badges() {
     
     # Comprehensive security badge (Dependabot + Code Scanning)
     if command -v gh >/dev/null 2>&1; then
-        DEPENDABOT_ALERTS=$(gh api repos/bold-minds/id/dependabot/alerts --jq 'length' 2>/dev/null || echo "0")
-        CODE_SCANNING_ALERTS=$(gh api repos/bold-minds/id/code-scanning/alerts --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
+        DEPENDABOT_ALERTS=$(gh api repos/bold-minds/dig/dependabot/alerts --jq 'length' 2>/dev/null || echo "0")
+        CODE_SCANNING_ALERTS=$(gh api repos/bold-minds/dig/code-scanning/alerts --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
         TOTAL_ALERTS=$((DEPENDABOT_ALERTS + CODE_SCANNING_ALERTS))
         OPEN_PRS=$(gh pr list --author "app/dependabot" --state open --json number --jq 'length' 2>/dev/null || echo "0")
         
@@ -475,10 +481,13 @@ generate_badges() {
 
 # 📈 Performance summary
 print_summary() {
-    local end_time=$(date +%s)
-    local duration=$((end_time - START_TIME))
-    local minutes=$((duration / 60))
-    local seconds=$((duration % 60))
+    # Declare then assign so `set -e` sees any failing command substitution
+    # (SC2155: `local var=$(cmd)` always returns 0 and masks errors).
+    local end_time duration minutes seconds
+    end_time=$(date +%s)
+    duration=$((end_time - START_TIME))
+    minutes=$((duration / 60))
+    seconds=$((duration % 60))
     
     echo -e "\n${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${PURPLE}📈 VALIDATION SUMMARY${NC}"

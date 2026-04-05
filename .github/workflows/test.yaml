@@ -7,12 +7,16 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: write
-  pull-requests: read
-  security-events: read
+  contents: read
+
+env:
+  GO_VERSION: '1.21'
+  GOLANGCI_LINT_VERSION: 'v2.0.2'
 
 jobs:
   test:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +28,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: ${{ env.GO_VERSION }}
 
       # Build validation (cross-platform).
       # Pure-stdlib libraries have no go.sum, so we only diff go.mod.
@@ -45,17 +49,47 @@ jobs:
       - name: Run benchmarks
         run: go test -bench=. -benchmem ./...
 
-      # Generate badge data from the primary Ubuntu job only.
+      - name: Upload coverage artifact
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-out
+          path: coverage.out
+          retention-days: 1
+
+  # Badge generation runs only on main, and is the only job that needs
+  # contents: write. Separating it from the test matrix keeps every test
+  # job running with read-only credentials (least privilege).
+  badges:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      security-events: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-out
+
       - name: Generate badge data
-        if: github.ref == 'refs/heads/main' && matrix.os == 'ubuntu-latest'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           mkdir -p .github/badges
 
-          # Install golangci-lint v2
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+          # Install pinned golangci-lint (never @latest in CI).
+          go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
 
           # Coverage badge
           if [[ -f "coverage.out" ]]; then
@@ -111,7 +145,6 @@ jobs:
           fi
 
       - name: Commit badges to main
-        if: github.ref == 'refs/heads/main' && matrix.os == 'ubuntu-latest'
         env:
           RUN_NUMBER: ${{ github.run_number }}
         run: |

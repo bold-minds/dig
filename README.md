@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bold-minds/dig.svg)](https://pkg.go.dev/github.com/bold-minds/dig)
-[![Go Version](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/go-version.json)](https://golang.org/doc/go1.26)
+[![Go Version](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/go-version.json)](https://golang.org/doc/go1.21)
 [![Latest Release](https://img.shields.io/github/v/release/bold-minds/dig?logo=github&color=blueviolet)](https://github.com/bold-minds/dig/releases)
 [![Last Updated](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/last-updated.json)](https://github.com/bold-minds/dig/commits)
 [![golangci-lint](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/dig/main/.github/badges/golangci-lint.json)](https://github.com/bold-minds/dig/actions/workflows/test.yaml)
@@ -14,8 +14,18 @@
 Every Go codebase that touches JSON, YAML, config files, or API responses ends up writing chains of `.(map[string]any)` type assertions. `dig` replaces the chains with one call.
 
 ```go
-// Before
+// Before — unsafe: panics on any mismatch
 addr := data.(map[string]any)["user"].(map[string]any)["contact"].(map[string]any)["address"].(string)
+
+// Before — safe but verbose: nested , ok := ... .(map[string]any) chains
+user, ok := data.(map[string]any)
+if !ok { return }
+contact, ok := user["user"].(map[string]any)
+if !ok { return }
+address, ok := contact["contact"].(map[string]any)
+if !ok { return }
+addr, ok := address["address"].(string)
+if !ok { return }
 
 // After
 addr, _ := dig.Dig[string](data, "user", "contact", "address")
@@ -36,7 +46,7 @@ addr, _ := dig.Dig[string](data, "user", "contact", "address")
 go get github.com/bold-minds/dig
 ```
 
-Requires Go 1.26 or later.
+Requires Go 1.21 or later.
 
 ## 🚀 Quick Start
 
@@ -169,7 +179,7 @@ tags, _ := dig.Dig[[]any](data, "users", 2, "posts", 1, "tags")
 
 ## 🛡️ Safety guarantees
 
-- **Never panics.** Nil inputs, wrong intermediate types, out-of-bounds indices, missing keys, and leaf type mismatches all return `(zero, false)` or fall through to the fallback.
+- **Never panics.** Nil inputs, wrong intermediate types, out-of-bounds indices, missing keys, leaf type mismatches, and unhashable `map[any]any` keys all return `(zero, false)` or fall through to the fallback.
 - **Immutable.** `dig` never modifies input data.
 - **No reflection.** Uses concrete type switches for `map[string]any`, `map[any]any`, and `[]any`.
 - **Zero dependencies.** Pure stdlib.
@@ -236,14 +246,23 @@ func At(data any, path ...any) (any, bool)
 
 Each path element is interpreted based on the current node's Go type:
 
-| Current node type  | Path element type | Action                        |
-|--------------------|-------------------|-------------------------------|
-| `map[string]any`   | `string`          | Look up the key               |
-| `map[any]any`      | any               | Look up the key               |
-| `[]any`            | `int` (non-neg)   | Index into the slice          |
-| anything else      | anything          | Navigation fails, return zero |
+| Current node type  | Path element type                       | Action                        |
+|--------------------|-----------------------------------------|-------------------------------|
+| `map[string]any`   | `string`                                | Look up the key               |
+| `map[any]any`      | `string`, `int`/`int64`/`int32`, `uint`/`uint64`/`uint32`, `float64`/`float32`, `bool` | Look up the key               |
+| `[]any`            | `int` (non-negative, exact type)        | Index into the slice          |
+| anything else      | anything                                | Navigation fails, return zero |
 
 If a path element's type doesn't match the current node's expected key or index type, navigation fails cleanly without panic.
+
+**Strict type matching for path elements:**
+
+- Slice indices must be exactly `int` — `int64`, `uint`, and friends are rejected. If your index came from a JSON number (`float64`) or a typed loop variable, convert to `int` first.
+- `map[any]any` keys are restricted to a whitelist of hashable primitive types (see table above). This guarantees `dig` never panics even if a caller passes an unhashable value like a slice. Non-whitelisted key types (e.g., struct keys) fail cleanly.
+
+**Supported container types:**
+
+`dig` walks exactly three container types: `map[string]any`, `map[any]any`, and `[]any`. These are the types produced by `encoding/json` (and most YAML decoders) when unmarshaling into `any`. Typed containers such as `map[string]string`, `map[string]int`, or `[]string` are **not** walked — navigation fails cleanly at the typed container. If your data uses typed containers, convert to `any`-based containers first, or use reflection-based alternatives.
 
 ## 🤝 Contributing
 

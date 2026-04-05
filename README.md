@@ -3,6 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/bold-minds/dig.svg)](https://pkg.go.dev/github.com/bold-minds/dig)
 [![Build](https://img.shields.io/github/actions/workflow/status/bold-minds/dig/test.yaml?branch=main&label=tests)](https://github.com/bold-minds/dig/actions/workflows/test.yaml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/bold-minds/dig)](go.mod)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/clairevnext/8f70decfbefbbc9efcfa554422dc9c22/raw/coverage.json)](https://github.com/bold-minds/dig/actions/workflows/test.yaml)
 
 **Nested data navigation for Go, one line.**
 

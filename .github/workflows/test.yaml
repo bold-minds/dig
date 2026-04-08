@@ -69,7 +69,7 @@ jobs:
 
       - name: Update coverage badge gist
         if: matrix.os == 'ubuntu-latest' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: schneegans/dynamic-badges-action@v1.7.0
+        uses: schneegans/dynamic-badges-action@v1.8.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}
           gistID: c2a8724a8f078f1d3b7c20a3489bf84d
